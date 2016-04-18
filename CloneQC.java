@@ -63,7 +63,7 @@ public class CloneQC extends Application {
 	
 	public static volatile ScrollPane displayerSP = new ScrollPane();
 	StackPane displayerRoot = new StackPane(displayerSP);
-	HashMap<String, VBox> channels = new HashMap<String, VBox>();
+	static HashMap<String, VBox> channels = new HashMap<String, VBox>();
 	ArrayList<String> joinedChannels = new ArrayList<String>();
 	
 	@Override
@@ -152,7 +152,7 @@ public class CloneQC extends Application {
 					
 					if(privateMessageBox.isSelected()) message = "6"+ sender +"\0" + dstPrivateTF.getText() + "\0" + text +"\0";
 					else { message = "2" + channelName + "\0"+ sender +"\0"+ text +"\0";
-						   channels.get(channelName).getChildren().add(buildMessage(sender, text, false));
+						   channels.get(channelName).getChildren().add(buildMessage(sender, text, false, false));
 						 }
 					
 					displayerSP.setVvalue(displayerSP.getVmax()); // auto-scroll
@@ -367,8 +367,8 @@ public class CloneQC extends Application {
 	}
 
 	
-	private VBox buildMessage(String sender, String message, boolean prvt){
-		VBox finalMessage = null;
+	public static VBox buildMessage(String sender, String message, boolean prvt, boolean incoming){
+		VBox finalMessage = null;		
 		String timeStamp = new SimpleDateFormat("dd.MM.yyyy  HH:mm:ss").format(new Date());
 		Label timeStampLabel = new Label("on " + timeStamp);
 		timeStampLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #AAAAAA;");
@@ -389,6 +389,11 @@ public class CloneQC extends Application {
 				borderColor = "-fx-border-color: #CD8C95;";
 			}
 		else finalMessage = new VBox(timeStampLabel, new HBox(senderInfo, text));
+		
+		if(incoming){
+			backgroundColor = "-fx-background-color: #54FF9F;";
+			borderColor = "-fx-border-color: #43CD80;";
+		}
 		
 		finalMessage.setStyle("-fx-padding: 10;" + 
                 "-fx-border-style: solid inside;" + 
