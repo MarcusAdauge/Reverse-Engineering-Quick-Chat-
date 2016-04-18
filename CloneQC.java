@@ -1,35 +1,48 @@
 import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
 import javafx.application.Application;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.control.Accordion;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.ScrollPane.ScrollBarPolicy;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.Border;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.GridPane;
+import javafx.scene.layout.BorderStroke;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
-import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import java.io.*;
 
 public class CloneQC extends Application {
 	
 	final static int PORT = 8167;
-	final static int SCENE_WIDTH = 700;
+	final static int SCENE_WIDTH = 800;
 	final static int SCENE_HEIGHT = 500;
 	static String nickName = "Marcus";
 	
@@ -41,6 +54,17 @@ public class CloneQC extends Application {
 	DatagramSocket reciever;
 	DatagramPacket sendPacket;
 	DatagramPacket recievePacket;
+	TabPane tabPane = new TabPane();
+	CheckBox spoofingBox = new CheckBox("spooing");
+	TextField onBehalfTF = new TextField();
+	CheckBox privateMessageBox  = new CheckBox("send a private message");
+	TextField dstPrivateTF = new TextField();
+	CheckBox noPrivacyBox  = new CheckBox("no privacy");
+	
+	public static volatile ScrollPane displayerSP = new ScrollPane();
+	StackPane displayerRoot = new StackPane(displayerSP);
+	HashMap<String, VBox> channels = new HashMap<String, VBox>();
+	ArrayList<String> joinedChannels = new ArrayList<String>();
 	
 	@Override
 	public void start(Stage primaryStage) throws Exception {
@@ -53,9 +77,22 @@ public class CloneQC extends Application {
 		socket = new DatagramSocket();
 		socket.setBroadcast(true);
 		
+		//reciever = new DatagramSocket(PORT);
+		
+		displayerSP.setVbarPolicy(ScrollBarPolicy.ALWAYS);
+		displayerSP.setHbarPolicy(ScrollBarPolicy.NEVER);
+	//	displayerSP.setStyle("-fx-background-color: #DDDFFF;");
+		displayerRoot.setPadding(new Insets(0, 10, 10, 10));
+		displayerSP.setPadding(new Insets(10, 10, 10, 10));
+		
+		layout.setCenter(displayerRoot);
 		layout.setTop(topicHandler());
 		layout.setBottom(messageHandler());
 		layout.setRight(setRightSide());
+		
+		displayerSP.setContent(channels.get("#Main"));
+		
+		new Displayer().start();
 		
 		window.show();
 	} 
@@ -67,7 +104,7 @@ public class CloneQC extends Application {
 		topicHBox.setAlignment(Pos.CENTER);
 		TextField topicField = new TextField();
 		Button btnSetTopic = new Button("Set topic");
-		
+		topicField.setPromptText("Set a new topic");
 		btnSetTopic.setOnAction(e -> {
 			String topic = topicField.getText();
 			window.setTitle(topic);
@@ -80,53 +117,65 @@ public class CloneQC extends Application {
 	}
 	
 	
-	public GridPane messageHandler(){
+	public TabPane messageHandler(){
+		joinedChannels.add("#Main");
+		setChannelTab("#Main");
+		tabPane.setStyle("-fx-background-color: #DDDFFF;");
+		
+		tabPane.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<Tab>() {
+		    @Override
+		    public void changed(ObservableValue<? extends Tab> observable, Tab oldTab, Tab newTab) {
+		    	displayerSP.setContent(channels.get(newTab.getText()));
+		    }
+		});
+		
+		return tabPane;
+	}
+	
+	
+	public void setChannelTab(String channelName){
+		VBox channelVB = new VBox(3);			// where the messages will be displayed
+		channels.put(channelName, channelVB);
+		
 		TextField messageField = new TextField();
-		CheckBox privateBox = new CheckBox("private message");
-		TextField privateDst = new TextField();
-		messageField.setPrefSize(SCENE_WIDTH / 1.5, SCENE_HEIGHT / 10);
+		messageField.setPrefSize(SCENE_WIDTH / 1.5, SCENE_HEIGHT / 7);
 		messageField.setMaxWidth(SCENE_WIDTH / 1.5);
+		messageField.setPromptText("Send a message ...");
 		
 		messageField.setOnKeyPressed((KeyEvent ke) -> {
 				if(ke.getCode() == KeyCode.ENTER){
+					String text = messageField.getText();
+					String sender = null;
 					String message = null;
-					if(privateBox.isSelected())
-						message = "6"+ nickName +"\0" + privateDst.getText() + "\0" + messageField.getText() +"\0";
-					else message = "2#Main\0"+ nickName +"\0"+ messageField.getText() +"\0";
+					if(spoofingBox.isSelected()) sender = onBehalfTF.getText();
+					else sender = nickName;
+					
+					if(privateMessageBox.isSelected()) message = "6"+ sender +"\0" + dstPrivateTF.getText() + "\0" + text +"\0";
+					else { message = "2" + channelName + "\0"+ sender +"\0"+ text +"\0";
+						   channels.get(channelName).getChildren().add(buildMessage(sender, text, false));
+						 }
+					
+					displayerSP.setVvalue(displayerSP.getVmax()); // auto-scroll
 					send(message);
 					messageField.clear();
 				}
 			});
 		
-		HBox privateContainer = new HBox(5);
-		privateContainer.setAlignment(Pos.CENTER);
-		privateContainer.getChildren().addAll(new Label("Destination:"), privateDst);
-		privateContainer.disableProperty().bind(privateBox.selectedProperty().not());
+		StackPane root = new StackPane(messageField);
+		root.setPadding(new Insets(10,10,10,10));
 		
-		GridPane grid = new GridPane();
-		grid.setHgap(20);
-		grid.setVgap(3);
-		grid.add(new Label("Send a message:"), 0, 0);
-		grid.add(new Separator(), 0, 1, 3, 1);
-		grid.add(messageField, 0, 2, 2, 2);
-		grid.add(privateBox, 2, 2);
-		grid.add(privateContainer, 2, 3);
-		
-		grid.setPadding(new Insets(10,10,10,10));
-		return grid;
+		Tab newTab = new Tab(channelName);
+		newTab.setContent(root);
+		tabPane.getTabs().add(newTab);
 	}
 	
 	
 	public VBox setRightSide(){
-	//	AnchorPane rightPane = new AnchorPane();
 		VBox rightSide = new VBox(5);
-	//	rightSide.setBorder(new Border());
-		rightSide.getChildren().addAll(
-				nickNameHandler(),
-				new Separator(),
-				statusHandler());
-		
-		
+		Accordion options = new Accordion(nickNameHandler(), statusHandler(), channelsHandler(), privacyHandler());
+		options.setPadding(new Insets(0,10,10,0));
+		options.setExpandedPane(options.getPanes().get(1));
+		rightSide.getChildren().add(options);
 		return rightSide;
 	}
 	
@@ -146,9 +195,8 @@ public class CloneQC extends Application {
 			send(newNameMsg);
 		});
 		
-		send("4"+nickName+"\0#mars\0"+"30");
-		
 		nickNameVBox.getChildren().addAll(nameField, btnSetName);
+		nickNameVBox.setStyle("-fx-background-color: #DDDFFF;");
 		pane.setContent(nickNameVBox);
 		pane.setText("Nickname");
 		return pane;
@@ -198,6 +246,114 @@ public class CloneQC extends Application {
 	}
 	
 	
+	public TitledPane channelsHandler(){
+		TitledPane pane = new TitledPane();
+		VBox channelsVBox = new VBox(3);
+		TextField addChannelField = new TextField();
+		ScrollPane channelSP = new ScrollPane();
+		ListView<Label> list = new ListView<Label>();
+		list.getBoundsInParent();
+		channelSP.setVbarPolicy(ScrollBarPolicy.ALWAYS);
+		channelSP.setHbarPolicy(ScrollBarPolicy.NEVER);
+		channelSP.setContent(list);
+		
+		addChannelField.setPromptText("Add a new channel [Enter]");
+		
+		addChannelField.setOnKeyPressed((KeyEvent ke) -> {
+			if(ke.getCode() == KeyCode.ENTER){
+				
+				ContextMenu contextMenu = new ContextMenu();
+				MenuItem joinItem = new MenuItem("join");
+				MenuItem leaveItem = new MenuItem("leave");
+				MenuItem deleteItem = new MenuItem("delete");
+				contextMenu.getItems().addAll(joinItem, leaveItem, deleteItem);
+				
+				String channelName = "#" + addChannelField.getText();
+				Label ch = new Label(channelName);
+				ch.setContextMenu(contextMenu);
+				
+				joinItem.setOnAction(e -> {
+					for(String c : joinedChannels)
+						if(c.equals(ch.getText())) return;
+					setChannelTab(ch.getText());
+					send("4" + nickName + "\0" + channelName + "\0" + "30");
+					joinedChannels.add(channelName);
+				});
+				
+				leaveItem.setOnAction(e -> {
+					send("5" + nickName + "\0" + channelName + "\0" + "0");
+					tabPane.getTabs().remove(getTabIndex(channelName));
+					joinedChannels.remove(channelName);
+				});
+				
+				deleteItem.setOnAction(e -> {
+					ObservableList<Label> items = list.getItems();
+					for(int i = 0; i < items.size(); i++){
+						if(items.get(i).getText().equals(channelName))
+							items.remove(i);
+					}
+					
+					if(joinedChannels.remove(channelName)){
+						send("5" + nickName + "\0" + channelName + "\0" + "0");
+						int index = getTabIndex(channelName);
+						if(index != -1) tabPane.getTabs().remove(index);
+					}
+				});
+				
+				list.getItems().add(ch);				
+				addChannelField.clear();
+			}
+		});
+		
+		channelsVBox.getChildren().addAll(addChannelField, channelSP);
+		channelsVBox.setStyle("-fx-background-color: #DDDFFF;");
+		pane.setContent(channelsVBox);
+		pane.setText("Channels");
+		return pane;
+	}
+	
+	
+	private int getTabIndex(String name){
+		ObservableList<Tab> tabs = tabPane.getTabs();
+		for(int i = 0; i < tabs.size(); i++){
+			if(tabs.get(i).getText().equals(name))
+				return i;
+		}
+		return -1;
+	}
+	
+	
+	public TitledPane privacyHandler(){
+		TitledPane pane = new TitledPane();
+		pane.setText("Privacy");
+		VBox privacyVB = new VBox(3);
+		
+		privateMessageBox = new CheckBox("send a private message");
+		spoofingBox = new CheckBox("spoofing");
+		noPrivacyBox = new CheckBox("no privacy");
+		
+		HBox privateContainer = new HBox(5);
+		privateContainer.setAlignment(Pos.CENTER);
+		privateContainer.setPadding(new Insets(0, 0, 10, 0));
+		privateContainer.getChildren().addAll(new Label("destination:"), dstPrivateTF);
+		privateContainer.disableProperty().bind(privateMessageBox.selectedProperty().not());
+		
+		HBox spoofingContainer = new HBox(5);
+		spoofingContainer.setAlignment(Pos.CENTER);
+		spoofingContainer.setPadding(new Insets(0, 0, 10, 0));
+		spoofingContainer.getChildren().addAll(new Label("on behalf of:"), onBehalfTF);
+		spoofingContainer.disableProperty().bind(spoofingBox.selectedProperty().not());
+		
+		privacyVB.getChildren().addAll(privateMessageBox, privateContainer, new Separator(), 
+									   spoofingBox,	spoofingContainer, new Separator(),
+									   noPrivacyBox);
+		privacyVB.setStyle("-fx-background-color: #DDDFFF;");
+		
+		pane.setContent(privacyVB);
+		return pane;
+	}
+	
+	
 	private void send(String message){
 		byte[] data = null;
 		try{
@@ -206,18 +362,51 @@ public class CloneQC extends Application {
 			socket.send(sendPacket);
 		}catch(IOException e){
 			System.out.println(e.getMessage());
-			System.exit(-1);
+			//System.exit(-1);
 		}
 	}
 
+	
+	private VBox buildMessage(String sender, String message, boolean prvt){
+		VBox finalMessage = null;
+		String timeStamp = new SimpleDateFormat("dd.MM.yyyy  HH:mm:ss").format(new Date());
+		Label timeStampLabel = new Label("on " + timeStamp);
+		timeStampLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #AAAAAA;");
+		
+		Label senderInfo = new Label(sender + ":  ");
+		senderInfo.setStyle("-fx-font-weight: bold;");
+		
+		Label text = new Label(message);
+		text.setPrefWidth(displayerSP.getWidth() / 2.2);
+		text.setWrapText(true); 	// display it in multiline
+	
+		String backgroundColor = "-fx-background-color: #DDDFFF;";
+		String borderColor = "-fx-border-color: #AAAFFF;";
+		
+		if(prvt) {
+				finalMessage = new VBox(new Label("<private>"), timeStampLabel, new HBox(senderInfo, text));
+				backgroundColor = "-fx-background-color: #FFAEB9;";
+				borderColor = "-fx-border-color: #CD8C95;";
+			}
+		else finalMessage = new VBox(timeStampLabel, new HBox(senderInfo, text));
+		
+		finalMessage.setStyle("-fx-padding: 10;" + 
+                "-fx-border-style: solid inside;" + 
+                "-fx-border-width: 2;" +
+                "-fx-border-radius: 5;" + 
+                borderColor +
+                backgroundColor +
+                "-fx-padding-top: 10px;");
+		
+		return finalMessage;
+	}
+	
 	
 	public static void main(String[] args) throws IOException{
 		launch(args);
 	}
 	
 }
-
-
 
 
 /*
@@ -230,6 +419,7 @@ public class CloneQC extends Application {
  *  		Away = DmyName\020
  *  		Offline = DmyName\030
  *  join channel: 4myName\0#chanName\030
+ *  leave channel: 5myName\0#chanName\00
  */
 
 
