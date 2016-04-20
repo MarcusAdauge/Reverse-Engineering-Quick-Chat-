@@ -10,32 +10,14 @@ import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Accordion;
-import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListView;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.Separator;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
-import javafx.scene.control.TextField;
-import javafx.scene.control.TitledPane;
-import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.*;
 import javafx.scene.control.ScrollPane.ScrollBarPolicy;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.Border;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.BorderStroke;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import java.io.*;
 
@@ -51,15 +33,13 @@ public class CloneQC extends Application {
 	BorderPane layout;
 	
 	DatagramSocket socket;
-	DatagramSocket reciever;
 	DatagramPacket sendPacket;
-	DatagramPacket recievePacket;
 	TabPane tabPane = new TabPane();
-	CheckBox spoofingBox = new CheckBox("spooing");
+	static CheckBox spoofingBox = new CheckBox("spooing");
 	TextField onBehalfTF = new TextField();
 	CheckBox privateMessageBox  = new CheckBox("send a private message");
 	TextField dstPrivateTF = new TextField();
-	CheckBox noPrivacyBox  = new CheckBox("no privacy");
+	static CheckBox noPrivacyBox  = new CheckBox("no privacy");
 	
 	public static volatile ScrollPane displayerSP = new ScrollPane();
 	StackPane displayerRoot = new StackPane(displayerSP);
@@ -77,11 +57,8 @@ public class CloneQC extends Application {
 		socket = new DatagramSocket();
 		socket.setBroadcast(true);
 		
-		//reciever = new DatagramSocket(PORT);
-		
 		displayerSP.setVbarPolicy(ScrollBarPolicy.ALWAYS);
 		displayerSP.setHbarPolicy(ScrollBarPolicy.NEVER);
-	//	displayerSP.setStyle("-fx-background-color: #DDDFFF;");
 		displayerRoot.setPadding(new Insets(0, 10, 10, 10));
 		displayerSP.setPadding(new Insets(10, 10, 10, 10));
 		
@@ -92,7 +69,14 @@ public class CloneQC extends Application {
 		
 		displayerSP.setContent(channels.get("#Main"));
 		
-		new Displayer().start();
+		Displayer displayer = new Displayer();
+		displayer.start();
+		
+		window.setOnCloseRequest(e -> {
+			e.consume();
+			displayer.interrupt();
+			System.exit(0);
+		});
 		
 		window.show();
 	} 
@@ -152,7 +136,7 @@ public class CloneQC extends Application {
 					
 					if(privateMessageBox.isSelected()) message = "6"+ sender +"\0" + dstPrivateTF.getText() + "\0" + text +"\0";
 					else { message = "2" + channelName + "\0"+ sender +"\0"+ text +"\0";
-						   channels.get(channelName).getChildren().add(buildMessage(sender, text, false, false));
+						   channels.get(channelName).getChildren().add(buildMessage(sender, text, false));
 						 }
 					
 					displayerSP.setVvalue(displayerSP.getVmax()); // auto-scroll
@@ -276,7 +260,9 @@ public class CloneQC extends Application {
 					for(String c : joinedChannels)
 						if(c.equals(ch.getText())) return;
 					setChannelTab(ch.getText());
-					send("4" + nickName + "\0" + channelName + "\0" + "30");
+					send("4" + nickName + "\0" + channelName + "\0" + "00");
+					send("L" + nickName + "\0" + channelName);
+					
 					joinedChannels.add(channelName);
 				});
 				
@@ -367,7 +353,7 @@ public class CloneQC extends Application {
 	}
 
 	
-	public static VBox buildMessage(String sender, String message, boolean prvt, boolean incoming){
+	public static VBox buildMessage(String sender, String message, boolean incoming){
 		VBox finalMessage = null;		
 		String timeStamp = new SimpleDateFormat("dd.MM.yyyy  HH:mm:ss").format(new Date());
 		Label timeStampLabel = new Label("on " + timeStamp);
@@ -383,16 +369,12 @@ public class CloneQC extends Application {
 		String backgroundColor = "-fx-background-color: #DDDFFF;";
 		String borderColor = "-fx-border-color: #AAAFFF;";
 		
-		if(prvt) {
-				finalMessage = new VBox(new Label("<private>"), timeStampLabel, new HBox(senderInfo, text));
-				backgroundColor = "-fx-background-color: #FFAEB9;";
-				borderColor = "-fx-border-color: #CD8C95;";
-			}
-		else finalMessage = new VBox(timeStampLabel, new HBox(senderInfo, text));
+		finalMessage = new VBox(timeStampLabel, new HBox(senderInfo, text));
 		
 		if(incoming){
 			backgroundColor = "-fx-background-color: #54FF9F;";
 			borderColor = "-fx-border-color: #43CD80;";
+			finalMessage.setTranslateX(displayerSP.getWidth()/2 - finalMessage.getWidth() - 90);
 		}
 		
 		finalMessage.setStyle("-fx-padding: 10;" + 
@@ -416,7 +398,7 @@ public class CloneQC extends Application {
 
 /*
  * 
- *  private message = 6\0myName\0hisName\0message\0
+ *  private message = 6myName\0hisName\0message\0
  *  change topic = BnewTopic\0
  *  nickname = 3myName\0newName\00
  *  status: Normal = DmyName\000
